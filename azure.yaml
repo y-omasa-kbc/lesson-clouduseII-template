@@ -3,6 +3,16 @@
 #   インフラの定義は infra/ フォルダの Bicep にある。
 name: cloud2-base-app
 
+# azd up の順番を「構築（provision）→ パッケージ（package）→ デプロイ（deploy）」に変える。
+#   既定の順番はパッケージが先なので、初めて構築するときは API の URL（API_BASE_URL）がまだなく、
+#   画面が API の URL を知らないままビルドされてしまう（画面からの呼び出しが 405 などで失敗する）。
+workflows:
+  up:
+    steps:
+      - azd: provision
+      - azd: package
+      - azd: deploy --all
+
 services:
   # 画面（React）→ Static Web Apps
   web:
