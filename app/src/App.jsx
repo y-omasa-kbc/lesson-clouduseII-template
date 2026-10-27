@@ -11,6 +11,7 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [classifying, setClassifying] = useState(null) // 分類中の問い合わせの ID
   const [lastResult, setLastResult] = useState(null) // 直前の分類の結果（再試行の回数などを表示する）
+  const [job, setJob] = useState(null) // 一括分類のジョブの状態（コマ10）
 
   async function load() {
     try {
@@ -63,6 +64,36 @@ export default function App() {
     }
   }
 
+  // 一括分類のジョブを始める（コマ10）。API は分類を待たずに、すぐジョブの ID を返す（202）
+  async function startJob() {
+    setMessage('')
+    const res = await fetch(`${API_BASE_URL}/api/jobs/classify`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) {
+      setMessage(data.error ?? `ジョブを始められませんでした（HTTP ${res.status}）`)
+      return
+    }
+    setJob({ jobId: data.jobId, state: 'queued', total: data.total, finished: 0 })
+  }
+
+  // ジョブが終わるまで、2秒ごとに状態を問い合わせる（ポーリング）
+  useEffect(() => {
+    if (!job || job.state === 'completed') return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/jobs?id=${encodeURIComponent(job.jobId)}`)
+        const data = await res.json()
+        if (res.ok) {
+          setJob(data)
+          await load() // 分類が進んだ問い合わせを、一覧に反映する
+        }
+      } catch (e) {
+        setMessage(`ジョブの状態を取得できませんでした（${e.message}）`)
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [job])
+
   useEffect(() => {
     load()
   }, [])
@@ -107,6 +138,30 @@ export default function App() {
       )}
 
       <h2>一覧</h2>
+
+      {/* 一括分類（コマ10） */}
+      <div className="job">
+        <button type="button" onClick={startJob} disabled={job && job.state !== 'completed'}>
+          未対応の問い合わせを、まとめて AI で分類する
+        </button>
+        {job && (
+          <div className="info">
+            <div>
+              ジョブ {job.jobId}: <strong>{job.state}</strong>（終わった件数 {job.finished} / {job.total}）
+            </div>
+            {job.done !== undefined && (
+              <div>
+                振り分け済み {job.done}・要確認 {job.needsReview}・失敗 {job.failed}・残り {job.pending}
+                ／ 重複として無視 {job.duplicates}・同じ問い合わせを再び分類 {job.reprocessed}
+              </div>
+            )}
+            {job.results?.filter((r) => r.status === 'failed').map((r) => (
+              <div key={r.inquiryId}>失敗: {r.detail}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <ul>
         {items.map((item) => (
           <li key={item.id}>

@@ -4,3 +4,4 @@ azure-cosmos
 azure-identity
 openai
 pydantic
+azure-storage-queue

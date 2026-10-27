@@ -1,4 +1,4 @@
-"""外部の AI API の失敗を、設計で吸収する（コマ9）
+"""外部の AI API の失敗を、設計で吸収する（コマ9。コマ10の開始状態では演習の解答を反映済み）
 
   1. 待ち時間の計算（指数バックオフとジッター。Retry-After があれば従う）
   2. 再試行とフォールバック（主のモデルで数回 → だめなら次のモデルへ）
@@ -25,8 +25,9 @@ def backoff_delay(retry_number, base, cap, retry_after=None, rand=random.random)
       - そうでなければ、指数バックオフ: base × 2^(retry_number - 1) 秒。ただし cap 秒を超えない
       - さらにジッター: 0 〜 その秒数 の間で、ランダムに選ぶ（rand() は 0 以上 1 未満の数を返す）
     """
-    # TODO(コマ9 演習手順4): ここを実装する。いまは待たずに、すぐ再試行している。
-    return 0.0
+    if retry_after is not None:
+        return retry_after
+    return rand() * min(cap, base * 2 ** (retry_number - 1))
 
 
 # =====================================================================
@@ -91,13 +92,13 @@ def call_with_resilience(
             except TransientLLMError as e:
                 last_error = e
                 log.append(f"{model}: {e}")
-                # TODO(コマ9 演習手順5): 再試行するか、次のモデルへ移るかを決める。
-                #   - このモデルでの再試行が残っていなければ（retry_number == max_retries_per_model）、次のモデルへ
-                #   - 残っていれば、backoff_delay で待ち時間を計算する（何回目の再試行かは retry_number + 1）
-                #   - 待ち時間が max_wait を超えるなら、待たずに次のモデルへ
-                #   - そうでなければ、log に待ち時間を記録し、sleep(待ち時間) してから、同じモデルでもう一度
-                #   いまは、失敗したらすぐに次のモデルへ移っている。
-                break
+                if retry_number == max_retries_per_model:
+                    break  # このモデルでの再試行を使い切った → 次のモデルへ
+                delay = backoff_delay(retry_number + 1, base_delay, max_delay, e.retry_after, rand)
+                if delay > max_wait:
+                    break  # 長く待ちすぎる → 待たずに次のモデルへ
+                log.append(f"{delay:.1f} 秒待って、もう一度")
+                sleep(delay)
             # LLMError（400・401・402 など、送り直しても直らない失敗）は、ここでは捕まえずに、そのまま外へ出る
 
     raise LLMError(f"どのモデルからも応答を得られなかった（最後の失敗: {last_error}）") from last_error

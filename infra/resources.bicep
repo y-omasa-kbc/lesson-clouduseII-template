@@ -20,6 +20,12 @@
 // コマ9で追加したもの
 //   - Cosmos DB のコンテナー llmcache（LLM の応答のキャッシュ。項目ごとの TTL で自動で消える）
 //   - アプリ設定: COSMOS_CACHE_CONTAINER
+//
+// コマ10で追加・変更したもの
+//   - Storage のキュー classify-jobs と、毒キュー classify-jobs-poison
+//   - Storage のキューに対するロールの割り当て（Functions のマネージドID・自分）
+//   - Cosmos DB のコンテナー jobs（非同期ジョブの状態）、アプリ設定: COSMOS_JOBS_CONTAINER
+//   - Functions の最大インスタンス数を 1 にした（同時に LLM を呼ぶ数を絞る。api/host.json の batchSize と合わせて）
 // =====================================================================
 param location string
 param webLocation string
@@ -32,6 +38,8 @@ var databaseName = 'appdb'
 var containerName = 'inquiries'
 var conversationsContainerName = 'conversations'
 var cacheContainerName = 'llmcache'
+var jobsContainerName = 'jobs'
+var jobQueueName = 'classify-jobs'
 var deploymentContainerName = 'deploymentpackage'
 var openRouterSecretName = 'openrouter-api-key'
 
@@ -39,6 +47,7 @@ var openRouterSecretName = 'openrouter-api-key'
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User（シークレットを読む）
 var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7' // Key Vault Secrets Officer（シークレットを書く）
 var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002' // Cosmos DB Built-in Data Contributor（データを読み書きする）
+var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88' // Storage Queue Data Contributor（キューのメッセージを読み書きする）
 
 // ---------------------------------------------------------------------
 // Static Web Apps（Free）: React で作った画面を配信する
@@ -81,6 +90,23 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobService
   name: deploymentContainerName
+}
+
+// キュー（コマ10）: 一括分類のジョブで、問い合わせ1件ごとのメッセージを入れる
+//   毒キュー（<キューの名前>-poison）は、上限の回数まで処理に失敗したメッセージが移される先
+resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+resource jobQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
+  parent: queueService
+  name: jobQueueName
+}
+
+resource jobPoisonQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
+  parent: queueService
+  name: '${jobQueueName}-poison'
 }
 
 // ---------------------------------------------------------------------
@@ -170,6 +196,24 @@ resource cacheContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/cont
   }
 }
 
+// 非同期ジョブの状態（コマ10）
+//   パーティションキーはジョブの ID。1つのジョブの見出しと、1件ごとの結果が、同じパーティションに入る
+//   defaultTtl: 7日たったジョブの記録は、自動で消える
+resource jobsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: database
+  name: jobsContainerName
+  properties: {
+    resource: {
+      id: jobsContainerName
+      partitionKey: {
+        paths: [ '/jobId' ]
+        kind: 'Hash'
+      }
+      defaultTtl: 604800
+    }
+  }
+}
+
 // ---------------------------------------------------------------------
 // Functions（Flex Consumption・Python）: API
 // ---------------------------------------------------------------------
@@ -209,7 +253,9 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
         }
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: 40
+        // 最大インスタンス数（コマ10で 40 から 1 に変更）。Flex Consumption では、HTTP の関数のまとまりと、
+        // キュー トリガーの関数のそれぞれが、この数まで増える。キューがたまっても、LLM を同時に呼ぶ数が増えすぎないようにする
+        maximumInstanceCount: 1
         instanceMemoryMB: 2048
       }
       runtime: {
@@ -259,6 +305,10 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
           value: cacheContainerName
         }
         {
+          name: 'COSMOS_JOBS_CONTAINER'
+          value: jobsContainerName
+        }
+        {
           name: 'OPENROUTER_API_KEY'
           value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=${openRouterSecretName})'
         }
@@ -279,6 +329,9 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
     deploymentContainer
     conversationsContainer
     cacheContainer
+    jobsContainer
+    jobQueue
+    jobPoisonQueue
   ]
 }
 
@@ -291,6 +344,30 @@ resource apiStorageBlobOwner 'Microsoft.Authorization/roleAssignments@2022-04-01
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
     principalId: api.identity.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Functions のマネージドIDに、キューのメッセージを読み書きする権限を与える（コマ10）
+//   キュー トリガーがメッセージを取り出す・失敗したメッセージを毒キューに移す・API がメッセージを入れる、に使う
+resource apiStorageQueueContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, api.id, storageQueueDataContributorRoleId)
+  scope: storage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// 自分（azd を実行した人）にも、キューのメッセージを読み書きする権限を与える（コマ10）
+//   演習で、キューの中身を見る・同じメッセージをもう一度入れる（lesson10/queue_tool.py）ために使う
+resource userStorageQueueContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(storage.id, principalId, storageQueueDataContributorRoleId)
+  scope: storage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
+    principalId: principalId
+    principalType: 'User'
   }
 }
 
@@ -358,3 +435,4 @@ output apiBaseUrl string = 'https://${api.properties.defaultHostName}'
 output webUrl string = 'https://${web.properties.defaultHostname}'
 output functionName string = api.name
 output keyVaultName string = keyVault.name
+output storageAccountName string = storage.name

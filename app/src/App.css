@@ -197,3 +197,10 @@ button.small {
   border: none;
   padding: 0;
 }
+
+/* ===== 一括分類のジョブ（コマ10） ===== */
+.job {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}

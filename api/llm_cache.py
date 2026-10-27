@@ -1,4 +1,4 @@
-"""LLM の応答のキャッシュ（コマ9）
+"""LLM の応答のキャッシュ（コマ9。コマ10の開始状態では演習の解答を反映済み）
 
 同じ入力に対する分類を、2回目からは LLM を呼ばずに、保存しておいた結果で返す。
 保存先は Cosmos DB のコンテナー llmcache（項目は一定の時間が過ぎると自動で消える。TTL）。
@@ -8,8 +8,8 @@
   - モデル・プロンプト・スキーマのどれかが変わったら、別のキーになる（古い答えを使わない）
 """
 
-import hashlib  # 演習手順6で使う
-import json  # 演習手順6で使う
+import hashlib
+import json
 
 
 def cache_key(purpose, model, messages, schema, mode):
@@ -21,9 +21,12 @@ def cache_key(purpose, model, messages, schema, mode):
       schema   : 出力の形（JSON Schema）
       mode     : 構造化出力の方式（json_schema / prompt）
     """
-    # TODO(コマ9 演習手順6): ここを実装する。引数の5つをまとめた文字列を作り、その SHA-256 を返す。
-    #   いまはキーを作らずに None を返しているので、キャッシュを使っていない（毎回 LLM を呼んでいる）。
-    return None
+    material = json.dumps(
+        {"purpose": purpose, "model": model, "messages": messages, "schema": schema, "mode": mode},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 class CosmosCache:

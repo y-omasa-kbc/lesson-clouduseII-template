@@ -10,6 +10,9 @@
   GET  /api/conversations?id=...  会話の履歴を返す（コマ7。画面を開き直したときに使う）
   POST /api/inquiries/classify?id=...  問い合わせを AI で分類し、担当に振り分ける（コマ8）
                         コマ9から、キャッシュ・再試行・フォールバック・呼ぶ回数の上限を加えた
+  POST /api/jobs/classify  未対応の問い合わせをまとめて分類するジョブを始める（コマ10。すぐ 202 を返す）
+  GET  /api/jobs?id=...    ジョブの状態を返す（コマ10）
+  （キュー トリガー）classify_worker・classify_poison  ジョブのメッセージを1件ずつ処理する（コマ10）
 
 接続先などの設定は、コードに書かずに「アプリ設定」（環境変数）から読む。
 注意: この時点では認証がなく、誰でも読み書きできる（コマ11で認証を加える）。
@@ -23,6 +26,7 @@ import asyncio
 import datetime
 import hashlib
 import json
+import logging
 import os
 import uuid
 
@@ -33,6 +37,7 @@ from azure.identity import DefaultAzureCredential
 from azurefunctions.extensions.http.fastapi import JSONResponse, Request, StreamingResponse
 
 import classification
+import jobs
 import llm
 import llm_cache
 import resilience
@@ -314,6 +319,24 @@ def classify_with_llm(item, config, mode):
     return result, {"cached": False, "llmCalls": budget.used, "callLog": call_log}
 
 
+def classify_and_save(item, config, mode):
+    """問い合わせ1件を分類し、担当を決めて、Cosmos DB に保存する（画面からの分類と、ジョブの両方で使う）"""
+    result, info = classify_with_llm(item, config, mode)
+    decision = classification.route(result)
+    item["classification"] = result.classification.model_dump()
+    item["assignee"] = decision["assignee"]
+    item["status"] = decision["status"]
+    item["classifyAttempts"] = result.attempts
+    item["classifiedAt"] = now_iso()
+    get_inquiries().replace_item(item=item["id"], body=item)
+    return result, decision, info
+
+
+def structured_output_mode(config):
+    # アプリ設定 STRUCTURED_OUTPUT_MODE があれば、設定ファイルより優先する（モデルを変えたときの切り替え用）
+    return os.environ.get("STRUCTURED_OUTPUT_MODE", config["structured_output_mode"])
+
+
 @app.route(route="inquiries/classify", methods=["POST"])
 async def classify_inquiry(req: Request) -> JSONResponse:
     inquiry_id = parse_conversation_id(req.query_params.get("id", ""))  # 問い合わせの ID も UUID の形
@@ -325,33 +348,115 @@ async def classify_inquiry(req: Request) -> JSONResponse:
         return JSONResponse({"error": "問い合わせが見つからない"}, status_code=404)
 
     config = llm.load_config()
-    # アプリ設定 STRUCTURED_OUTPUT_MODE があれば、設定ファイルより優先する（モデルを変えたときの切り替え用）
-    mode = os.environ.get("STRUCTURED_OUTPUT_MODE", config["structured_output_mode"])
+    mode = structured_output_mode(config)
 
     try:
         # モデルの応答や再試行の待ち時間の間、ほかのリクエストを止めないように、別のスレッドで動かす
-        result, info = await asyncio.to_thread(classify_with_llm, item, config, mode)
+        result, decision, info = await asyncio.to_thread(classify_and_save, item, config, mode)
     except llm.LLMError as e:
         # 再試行・フォールバックをしても、モデルから応答を得られなかった。問い合わせは分類しないままにする
         return JSONResponse({"error": str(e), "callLog": getattr(e, "call_log", [])}, status_code=503)
-
-    decision = classification.route(result)
-    item["classification"] = result.classification.model_dump()
-    item["assignee"] = decision["assignee"]
-    item["status"] = decision["status"]
-    item["classifyAttempts"] = result.attempts
-    item["classifiedAt"] = now_iso()
-    get_inquiries().replace_item(item=item["id"], body=item)
 
     return JSONResponse(
         {
             "id": item["id"],
             "classification": item["classification"],
-            "assignee": item["assignee"],
-            "status": item["status"],
+            "assignee": decision["assignee"],
+            "status": decision["status"],
             "attempts": result.attempts,
             "errors": result.errors,
             "fallback": result.fallback,
             **info,
         }
     )
+
+
+# =====================================================================
+# 一括分類の非同期ジョブ（コマ10）
+# =====================================================================
+def get_job_store():
+    return jobs.CosmosJobStore(get_database().get_container_client(os.environ["COSMOS_JOBS_CONTAINER"]))
+
+
+def get_queue():
+    """ジョブのメッセージを入れるキュー（Storage Queue）。キーではなく、マネージドIDで接続する"""
+    from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+
+    return QueueClient(
+        account_url=os.environ["AzureWebJobsStorage__queueServiceUri"],
+        queue_name=jobs.QUEUE_NAME,
+        credential=DefaultAzureCredential(),
+        # キュー トリガーは、既定ではメッセージが Base64 で符号化されていると期待する
+        message_encode_policy=TextBase64EncodePolicy(),
+    )
+
+
+@app.route(route="jobs/classify", methods=["POST"])
+async def start_classify_job(req: Request) -> JSONResponse:
+    """未対応の問い合わせを、まとめて分類するジョブを始める。分類の完了は待たずに、すぐ返す"""
+    config = llm.load_config()
+    query = "SELECT TOP @limit c.id FROM c WHERE c.status = '未対応' ORDER BY c.createdAt"
+    targets = list(
+        get_inquiries().query_items(
+            query=query,
+            parameters=[{"name": "@limit", "value": config["max_job_items"]}],
+            enable_cross_partition_query=True,
+        )
+    )
+    if not targets:
+        return JSONResponse({"error": "未対応の問い合わせがない"}, status_code=400)
+
+    header, messages = jobs.new_job([t["id"] for t in targets], now_iso())
+    get_job_store().create_job(header)  # 先にジョブを記録してから、メッセージを入れる
+    queue = get_queue()
+    for m in messages:
+        await asyncio.to_thread(queue.send_message, m)
+
+    # 202 Accepted: 「受け付けた。処理はこれから」。状態を問い合わせる URL も知らせる
+    return JSONResponse(
+        {"jobId": header["jobId"], "total": header["total"], "statusUrl": f"/api/jobs?id={header['jobId']}"},
+        status_code=202,
+    )
+
+
+@app.route(route="jobs", methods=["GET"])
+async def get_job(req: Request) -> JSONResponse:
+    job_id = parse_conversation_id(req.query_params.get("id", ""))  # ジョブの ID も UUID の形
+    if job_id is None:
+        return JSONResponse({"error": "ジョブの ID が正しくない"}, status_code=400)
+    store = get_job_store()
+    header = store.get_header(job_id)
+    if header is None:
+        return JSONResponse({"error": "ジョブが見つからない"}, status_code=404)
+    return JSONResponse(jobs.summarize(header, store.list_results(job_id)))
+
+
+def classify_one(inquiry_id):
+    """ジョブの中で、問い合わせ1件を分類する。(status, detail) を返す"""
+    try:
+        item = get_inquiries().read_item(item=inquiry_id, partition_key=inquiry_id)
+    except CosmosResourceNotFoundError as e:
+        raise jobs.InquiryGone("問い合わせが見つからない（削除された）") from e
+    config = llm.load_config()
+    result, decision, info = classify_and_save(item, config, structured_output_mode(config))
+    status = jobs.DONE if decision["status"] == "振り分け済み" else jobs.NEEDS_REVIEW
+    return status, f"{decision['assignee']}（LLM を呼んだ回数 {info['llmCalls']} 回）"
+
+
+# キュー トリガー: メッセージが入ると、Azure Functions が1件ずつこの関数を呼ぶ
+#   connection="AzureWebJobsStorage": 関数アプリ自身の Storage に、マネージドIDで接続する
+#   （アプリ設定 AzureWebJobsStorage__queueServiceUri などで、接続先を指定してある）
+@app.queue_trigger(arg_name="msg", queue_name=jobs.QUEUE_NAME, connection="AzureWebJobsStorage")
+def classify_worker(msg: func.QueueMessage) -> None:
+    body = msg.get_body().decode("utf-8")
+    logging.info("classify_worker: メッセージを受け取った（%d 回目）", msg.dequeue_count)
+    outcome = jobs.process_message(body, get_job_store(), classify_one, now_iso())
+    logging.info("classify_worker: %s", outcome)
+
+
+# 毒キュー: 上限の回数まで失敗したメッセージが、ここに移される
+@app.queue_trigger(arg_name="msg", queue_name=jobs.POISON_QUEUE_NAME, connection="AzureWebJobsStorage")
+def classify_poison(msg: func.QueueMessage) -> None:
+    body = msg.get_body().decode("utf-8")
+    outcome = jobs.record_poison(body, get_job_store(), now_iso())
+    logging.warning("classify_poison: 毒キューのメッセージを記録した（%s）", outcome)
