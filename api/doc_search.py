@@ -1,5 +1,7 @@
 """文書の検索（コマ14）: ローカルのベクトルDBから、Azure AI Search へ
 
+コマ16で、文書の権限のフィールド allowedGroups と、検索の絞り込み（filter）を追加した。
+
   1. インデックスの定義（build_index）       : どのフィールドを、どう検索できるようにするか
   2. ローカルのデータの変換（to_search_documents）: ローカルの形から、インデックスの文書の形へ
   3. 検索（build_search_args・run_search）     : 全文検索・ベクトル検索・ハイブリッド検索
@@ -43,6 +45,14 @@ def build_index(name, dimensions):
             vector_search_dimensions=dimensions,
             vector_search_profile_name=VECTOR_PROFILE,
         ),
+        # 文書の権限（コマ16）: この文書を見てよいグループの一覧。絞り込み（filter）だけに使う
+        #   全文検索の対象にはせず、検索の結果にも返さない（hidden=True。誰が見られるかを、利用者に知らせない）
+        SimpleField(
+            name="allowedGroups",
+            type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+            filterable=True,
+            hidden=True,
+        ),
     ]
     vector_search = VectorSearch(
         algorithms=[HnswAlgorithmConfiguration(name="hnsw", parameters=HnswParameters(metric="cosine"))],
@@ -82,13 +92,21 @@ def to_search_documents(records):
 # =====================================================================
 # 3. 検索
 # =====================================================================
-def build_search_args(mode, query, vector, top):
+def build_search_args(mode, query, vector, top, filter=None):
     """SearchClient.search に渡す引数を作る
 
       keyword : 全文検索だけ（search_text）
       vector  : ベクトル検索だけ（vector_queries）
       hybrid  : 両方を1回の要求で送る。AI Search が RRF で順位をまとめる
+      filter  : 絞り込みの式（コマ16）。全文検索にもベクトル検索にも効く（ベクトル検索では、近いものを探す前に絞り込む）
     """
+    args = _mode_args(mode, query, vector, top)
+    if filter is not None:
+        args["filter"] = filter
+    return args
+
+
+def _mode_args(mode, query, vector, top):
     vector_query = None
     if mode != "keyword":
         vector_query = VectorizedQuery(vector=vector, k_nearest_neighbors=top * 5, fields="contentVector")
@@ -99,9 +117,9 @@ def build_search_args(mode, query, vector, top):
     return {"search_text": query, "vector_queries": [vector_query], "top": top}
 
 
-def run_search(client, mode, query, vector, top=3):
+def run_search(client, mode, query, vector, top=3, filter=None):
     """検索して、結果（source・content・score）のリストを返す"""
-    args = build_search_args(mode, query, vector, top)
+    args = build_search_args(mode, query, vector, top, filter)
     return [
         {"source": r["source"], "content": r["content"], "score": round(r["@search.score"], 4)}
         for r in client.search(select=["source", "content"], **args)

@@ -49,6 +49,8 @@
 //   - Functions のマネージドIDの AI Search のロールを、Search Index Data Reader から Search Index Data Contributor に変更
 //     （取り込みの関数が、文書を投入・削除するため）
 //   - 自分に、Blob のデータを読み書きするロールと、Cosmos DB のデータを読み書きするロールを追加（演習の道具で使う）
+//
+// コマ16: 構成の変更はない（インデックスに文書の権限のフィールドが増え、質問に答える API /api/ask が増えるだけ）
 // =====================================================================
 param location string
 param webLocation string

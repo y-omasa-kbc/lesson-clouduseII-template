@@ -15,6 +15,7 @@
   POST /api/assist      ツールを使うアシスタント（コマ12。問い合わせの検索・ステータスの変更）  {"message": "..."}
   POST /api/mcp         MCP サーバー（コマ13。JSON-RPC のメッセージを受け取る）
   POST /api/search      文書を検索する（コマ14）  {"query": "...", "mode": "keyword|vector|hybrid"}
+  POST /api/ask         社内FAQに質問する（コマ16。利用者が見てよい文書だけで答え、引用を付ける）  {"question": "..."}
   POST /api/inquiries/classify?id=...  問い合わせを AI で分類し、担当に振り分ける（コマ8）
                         コマ9から、キャッシュ・再試行・フォールバック・呼ぶ回数の上限を加えた
   POST /api/jobs/classify  未対応の問い合わせをまとめて分類するジョブを始める（コマ10。すぐ 202 を返す）
@@ -59,6 +60,7 @@ import jobs
 import llm
 import llm_cache
 import mcp_server
+import rag
 import resilience
 import tools
 from history import trim_history
@@ -775,3 +777,44 @@ def ingest_poison(msg: func.QueueMessage) -> None:
     source = ingest.source_of(parsed[1]) if parsed else "(不明)"
     record_ingest({"action": "poison", "source": source, "error": "上限の回数まで失敗した（毒キュー）"}, msg.dequeue_count)
     logging.warning("ingest_poison: %s を毒キューから記録した", source)
+
+
+# =====================================================================
+# アクセス制御付きの RAG（コマ16）
+# =====================================================================
+@app.route(route="ask", methods=["POST"])
+async def ask(req: Request) -> JSONResponse:
+    try:
+        principal = authenticate(req)
+    except authz.AuthError as e:
+        return auth_error(e)
+    try:
+        data = await req.json()
+    except ValueError:
+        return JSONResponse({"error": "JSON の形式が正しくない"}, status_code=400)
+    question = str(data.get("question", "")).strip()
+    if not question or len(question) > MAX_MESSAGE:
+        return JSONResponse({"error": "質問が空か、長すぎる"}, status_code=400)
+
+    # 利用者のグループは、トークンで確かめた利用者から、サーバー側で決める（要求の本文の値は使わない）
+    groups = rag.groups_for(principal, load_dev_users())
+    config = llm.load_config()
+    try:
+        vector = await asyncio.to_thread(embedding.embed_query, question)
+        hits = await asyncio.to_thread(rag.retrieve, get_search_client(), question, vector, groups)
+        result = await asyncio.to_thread(
+            rag.answer_question,
+            question,
+            hits,
+            lambda messages: llm.complete_text(messages, config["rag_max_output_tokens"]),
+            config["rag_system_prompt"],
+        )
+    except embedding.EmbeddingError as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+    except llm.LLMError as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+    except Exception:  # noqa: BLE001
+        logging.exception("質問への回答に失敗した")
+        return JSONResponse({"error": "回答に失敗した（ロールが行き渡っていない可能性がある）"}, status_code=503)
+    # searched: 検索で候補になった文書（演習で、見えてはいけない文書が混ざっていないかを確かめるために返す）
+    return JSONResponse({**result, "groups": groups, "searched": [h["source"] for h in hits]})

@@ -1,4 +1,6 @@
-"""言語モデル（LLM）を呼ぶ部分（コマ7〜9・12。教員が用意したもの）
+"""言語モデル（LLM）を呼ぶ部分（コマ7〜9・12・16。教員が用意したもの）
+
+コマ16で、応答をまとめて返す complete_text（RAG の回答に使う）を追加した。
 
 コマ9で「プロバイダ」の形に整理した。
   プロバイダ = LLM の呼び先。同じ形の関数（complete_json・stream_chat・complete_tools）を持つ。
@@ -101,6 +103,24 @@ def stream_chat(messages, max_tokens):
 
 
 # =====================================================================
+# RAG の回答（コマ16）: 応答をまとめて返す
+#   モデルの候補を順に試す（主のモデルが一時的に失敗したら、フォールバックのモデル）。再試行はしない
+# =====================================================================
+def complete_text(messages, max_tokens):
+    provider = get_provider()
+    candidates = model_candidates()
+    if not candidates:
+        raise LLMError("呼んでよいモデルが設定されていない（教員の指示を待つ）")
+    last_error = None
+    for model in candidates:
+        try:
+            return provider.complete_text(model, messages, max_tokens)
+        except TransientLLMError as e:
+            last_error = e
+    raise last_error
+
+
+# =====================================================================
 # モックLLM
 # =====================================================================
 # 分類のモック: 問い合わせの文字列に含まれる言葉で、決まった結果を返す
@@ -138,6 +158,9 @@ class MockProvider:
     エージェントの失敗（コマ13）
       error_loop      : 毎回違う、存在しない問い合わせの ID で get_inquiry を要求し続ける（エラーが続く）
       ignore_scope    : 渡されていない更新のツールも要求する（モデルが範囲を守らない）
+    RAG の回答の失敗（コマ16）
+      bad_citation    : 存在しない資料の番号（[9]）を引用する
+      no_citation     : 引用を付けずに、資料にない内容をもっともらしく答える
     """
 
     def __init__(self):
@@ -170,6 +193,29 @@ class MockProvider:
         for i in range(0, len(text), 4):
             time.sleep(0.08)  # 本物のように少しずつ届くことを再現する
             yield text[i : i + 4]
+
+    def complete_text(self, model, messages, max_tokens):
+        """RAG の回答のモック（コマ16）。資料と質問の言葉の重なりで、答えるか「分からない」かを決める
+
+        質問の言葉（2文字ずつの並び）が、いちばん多く含まれる資料の「A.」の文を、その番号を付けて返す。
+        重なりが少なければ、「資料からは分かりません」と返す。意味を理解しているわけではない。
+        """
+        self._maybe_fail(model, messages)
+        question, sources = _parse_rag_prompt(messages[-1]["content"])
+        if self.fault == "no_citation":
+            return "（モックLLMの応答）その件は、毎年4月に全社員へ一律で案内されることになっている。"
+        best_n, best_score = None, 0.0
+        grams = _bigrams(question)
+        for n, text in sources.items():
+            score = len(grams & _bigrams(text)) / len(grams) if grams else 0.0
+            if score > best_score:
+                best_n, best_score = n, score
+        if best_n is None or best_score < _MOCK_RAG_THRESHOLD:
+            return "（モックLLMの応答）資料からは分かりません。"
+        answer_lines = [line for line in sources[best_n].splitlines() if line.startswith("A.")]
+        answer = (answer_lines[0][2:] if answer_lines else sources[best_n]).strip()
+        cite = 9 if self.fault == "bad_citation" else best_n
+        return f"（モックLLMの応答）{answer} [{cite}]"
 
     def complete_json(self, model, messages, schema, mode, max_tokens):
         """分類用のモック。決まった規則で分類し、JSON の文字列を返す"""
@@ -252,6 +298,30 @@ class MockProvider:
             "「探して」と書く。ステータスを変えるときは、問い合わせの ID と「対応中」か「完了」を書く。",
             "tool_calls": [],
         }
+
+
+_MOCK_RAG_THRESHOLD = 0.4
+_RAG_SOURCE = re.compile(r"^\[(\d+)\] 出典: .*$", re.MULTILINE)
+_JAPANESE_RUN = re.compile(r"[ぁ-んァ-ヶ一-龠ーA-Za-z0-9]+")
+_STOP_BIGRAMS = {"とき", "きは", "する", "には", "のは", "たい", "ですか", "教え", "えて", "いか", "るか", "って"}
+
+
+def _bigrams(text):
+    grams = set()
+    for run in _JAPANESE_RUN.findall(text):
+        grams.update(run[i : i + 2] for i in range(len(run) - 1))
+    return grams - _STOP_BIGRAMS
+
+
+def _parse_rag_prompt(content):
+    """rag.build_messages の形のプロンプトから、(質問, {番号: 資料の本文}) を取り出す"""
+    body, _, question = content.partition("【質問】")
+    sources = {}
+    matches = list(_RAG_SOURCE.finditer(body))
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        sources[int(m.group(1))] = body[m.end() : end].strip()
+    return question.strip(), sources
 
 
 def _check_tool_messages(model, messages):
@@ -380,6 +450,18 @@ class OpenRouterProvider:
                     yield choice.delta.content
         except OpenAIError as e:
             raise _translate_error(e, model) from e
+
+    def complete_text(self, model, messages, max_tokens):
+        from openai import OpenAIError
+
+        client = self._client(model)
+        try:
+            response = client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+        except OpenAIError as e:
+            raise _translate_error(e, model) from e
+        if not response.choices or response.choices[0].message.content is None:
+            raise LLMError("モデルの応答が空だった")
+        return response.choices[0].message.content
 
     def complete_json(self, model, messages, schema, mode, max_tokens):
         from openai import OpenAIError

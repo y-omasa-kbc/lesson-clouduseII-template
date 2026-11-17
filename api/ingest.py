@@ -102,10 +102,7 @@ def make_chunks(source, text):
 # =====================================================================
 def cache_key(model, digest):
     """埋め込みキャッシュのキー"""
-    # TODO(コマ15 演習手順5-1): キーに、埋め込みの方法（model）も入れる。
-    #   f"{model}#{digest}" のハッシュ（content_hash を使う）を返す。
-    #   いまは内容のハッシュだけなので、埋め込みモデルを変えても、前のモデルのベクトルが使われてしまう。
-    return digest
+    return content_hash(f"{model}#{digest}")
 
 
 def embed_with_cache(chunks, model, cache, embed_many):
@@ -115,12 +112,15 @@ def embed_with_cache(chunks, model, cache, embed_many):
       embed_many : 文字列のリスト → ベクトルのリスト（埋め込みモデルを呼ぶ。本物なら費用がかかる）
       戻り値     : (ベクトルのリスト（chunks と同じ順）, 新たに埋め込んだ数)
     """
-    # TODO(コマ15 演習手順5-2): キャッシュを使う。
-    #   1. 各チャンクのキー cache_key(model, c["hash"]) で cache.get し、なかったものの位置を集める
-    #   2. なかったものがあれば、その本文だけを embed_many に1回で渡し、結果を cache.put で保存する
-    #   3. (chunks と同じ順のベクトルのリスト, なかったものの数) を返す
-    #   いまは、毎回すべてのチャンクを埋め込んでいる。
-    return embed_many([c["content"] for c in chunks]), len(chunks)
+    keys = [cache_key(model, c["hash"]) for c in chunks]
+    vectors = [cache.get(k) for k in keys]
+    missing = [i for i, v in enumerate(vectors) if v is None]
+    if missing:
+        new_vectors = embed_many([chunks[i]["content"] for i in missing])
+        for i, v in zip(missing, new_vectors):
+            vectors[i] = v
+            cache.put(keys[i], v)
+    return vectors, len(missing)
 
 
 # =====================================================================
@@ -133,10 +133,9 @@ def plan_update(existing_ids, chunks):
       消す    : インデックスにある ID のうち、新しいチャンクにないもの（内容が変わる前・なくなったチャンク）
       ID が両方にあるチャンクは、内容が同じなので、何もしない
     """
-    # TODO(コマ15 演習手順6-1): 上のとおりに、投入するチャンクと、消す ID を決める。
-    #   消す ID は sorted で並べて返す（テストで比べやすくするため）。
-    #   いまは、すべてのチャンクを投入し、何も消していない。差し替えた文書の古いチャンクが、検索に残ってしまう。
-    return list(chunks), []
+    existing = set(existing_ids)
+    new_ids = {c["id"] for c in chunks}
+    return [c for c in chunks if c["id"] not in existing], sorted(existing - new_ids)
 
 
 # =====================================================================
@@ -158,11 +157,9 @@ def process_event(body, blobs, index, cache, embed_many, model):
     # イベントの種類ではなく、いまの Blob の状態に合わせる
     text = blobs.read_text(name)
     if text is None:
-        # TODO(コマ15 演習手順6-2): Blob がない（消された）ときは、その文書のチャンクを、インデックスからすべて消す。
-        #   index.ids_for_source(source) で ID を集めて index.delete に渡し、
-        #   result に "action": "deleted" と "deleted": 消した数 を入れて返す。
-        #   いまは何もしていない。消した文書が、検索に残ってしまう。
-        return {**result, "action": "missing", "deleted": 0}
+        ids = index.ids_for_source(source)
+        index.delete(ids)
+        return {**result, "action": "deleted", "deleted": len(ids)}
 
     chunks = make_chunks(source, text)
     to_upload, to_delete = plan_update(index.ids_for_source(source), chunks)

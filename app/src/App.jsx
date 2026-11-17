@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Assistant from './Assistant.jsx'
 import ToolAssistant from './ToolAssistant.jsx'
 import DocSearch from './DocSearch.jsx'
+import FaqBot from './FaqBot.jsx'
 import SignIn from './SignIn.jsx'
 import { apiFetch, getSession } from './api.js'
 
@@ -203,6 +204,9 @@ export default function App() {
           </li>
         ))}
       </ul>
+
+      {/* 社内FAQボット（コマ16）。key を利用者の ID にして、利用者を切り替えたら表示を作り直す */}
+      <FaqBot key={`faq-${user?.id ?? 'none'}`} user={user} />
 
       {/* 社内文書の検索（コマ14） */}
       <DocSearch user={user} />

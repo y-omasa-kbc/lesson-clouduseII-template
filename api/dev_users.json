@@ -1,8 +1,39 @@
 {
-  "_comment": "演習用のテスト利用者（架空の人物）。POST /api/dev/login で、パスワードなしでこの誰にでもなれる（本番では使わない）",
+  "_comment": "演習用のテスト利用者（架空の人物）。POST /api/dev/login で、パスワードなしでこの誰にでもなれる（本番では使わない）。groups はコマ16で追加した、文書の権限のグループ（サーバー側で持つ。要求からは受け取らない）",
   "users": [
-    {"id": "user-aoi", "name": "青井（一般の利用者）", "roles": []},
-    {"id": "user-kai", "name": "海野（一般の利用者）", "roles": []},
-    {"id": "staff-sora", "name": "空木（担当者）", "roles": ["staff"]}
+    {
+      "id": "user-aoi",
+      "name": "青井（一般の利用者）",
+      "roles": [],
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "user-kai",
+      "name": "海野（一般の利用者・人事課）",
+      "roles": [],
+      "groups": [
+        "all",
+        "hr"
+      ]
+    },
+    {
+      "id": "staff-sora",
+      "name": "空木（担当者・情報システム課）",
+      "roles": [
+        "staff"
+      ],
+      "groups": [
+        "all",
+        "it"
+      ]
+    },
+    {
+      "id": "user-toyama",
+      "name": "外山（協力会社の利用者・グループなし）",
+      "roles": [],
+      "groups": []
+    }
   ]
 }

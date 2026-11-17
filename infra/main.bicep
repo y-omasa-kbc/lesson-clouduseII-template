@@ -28,7 +28,7 @@ param principalId string = ''
 var tags = {
   'azd-env-name': environmentName
   course: 'cloud2'
-  lesson: '15'
+  lesson: '16'
 }
 
 // リソース名の重複を避けるための短い文字列（同じ環境名・場所なら毎回同じ値になる）

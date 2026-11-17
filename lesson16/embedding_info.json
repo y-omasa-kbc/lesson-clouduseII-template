@@ -1,0 +1,5 @@
+{
+  "provider": "mock",
+  "model": "mock",
+  "dimensions": 256
+}
