@@ -1,4 +1,4 @@
-"""埋め込み（コマ14。教員が用意したもの）
+"""埋め込み（コマ14。教員が用意したもの。コマ15で、文書をまとめて埋め込む embed_documents を追加した）
 
 文書の埋め込みは、教員が事前に作って配っている（lesson14/vector_store.json）。学生が作るのは、検索の質問の埋め込みだけである。
 文書と質問は、必ず同じ方法で埋め込む。違う方法で作ったベクトルどうしは、比べても意味がない。
@@ -80,6 +80,34 @@ def openrouter_embed(texts, model):
     except OpenAIError as e:
         raise EmbeddingError(f"埋め込みを作れなかった（{model}）") from e
     return [d.embedding for d in response.data]
+
+
+def _configured_model():
+    config = json.loads(Path(__file__).with_name("llm_config.json").read_text(encoding="utf-8"))
+    model = config["embedding_model"]
+    if model.startswith("set-by-teacher/"):
+        raise EmbeddingError("埋め込みモデルが指定されていない（教員の指示を待つ）")
+    return model
+
+
+def document_model_name():
+    """文書の埋め込みに使う方法の名前（コマ15）。埋め込みキャッシュのキーに入れる"""
+    provider = os.environ.get("EMBEDDING_PROVIDER", "mock")
+    if provider == "mock":
+        return "mock"
+    if provider != "openrouter":
+        raise EmbeddingError(f"埋め込みの呼び先 {provider} は使えない")
+    return _configured_model()
+
+
+def embed_documents(texts):
+    """文書のチャンクをまとめて埋め込む（コマ15）。本物のときは、1回の要求にまとめて送る"""
+    if not texts:
+        return []
+    model = document_model_name()
+    if model == "mock":
+        return [mock_embed(t) for t in texts]
+    return openrouter_embed(list(texts), model)
 
 
 def embed_query(text, info=None):

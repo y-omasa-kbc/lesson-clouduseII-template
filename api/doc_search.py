@@ -34,13 +34,15 @@ def build_index(name, dimensions):
     fields = [
         SimpleField(name="id", type=SearchFieldDataType.String, key=True),
         SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
-        # TODO(コマ14 演習手順4-1): 本文を日本語で検索できるようにする。analyzer_name="ja.microsoft" を指定する。
-        #   いまは既定のアナライザー（standard.lucene）を使っている。
-        SearchableField(name="content", type=SearchFieldDataType.String),
-        # TODO(コマ14 演習手順4-2): ベクトルのフィールド contentVector を追加する。
-        #   SearchField(name="contentVector", type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-        #               searchable=True, hidden=True,
-        #               vector_search_dimensions=dimensions, vector_search_profile_name=VECTOR_PROFILE)
+        SearchableField(name="content", type=SearchFieldDataType.String, analyzer_name="ja.microsoft"),
+        SearchField(
+            name="contentVector",
+            type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+            searchable=True,
+            hidden=True,
+            vector_search_dimensions=dimensions,
+            vector_search_profile_name=VECTOR_PROFILE,
+        ),
     ]
     vector_search = VectorSearch(
         algorithms=[HnswAlgorithmConfiguration(name="hnsw", parameters=HnswParameters(metric="cosine"))],
@@ -66,11 +68,14 @@ def to_search_documents(records):
       ローカルの形: {"source": 文書のパス, "text": 本文, "embedding": ベクトル}
       文書の形    : {"id": document_id の値, "source": 同じ, "content": 本文, "contentVector": ベクトル}
     """
-    # TODO(コマ14 演習手順5): 上の形に変える。id は document_id(r["source"], i) で作る（i はリストの中の位置）。
-    #   いまは、パスをそのまま id にしている。"/" や "." はキーに使えないので、投入に失敗する。
     return [
-        {"id": r["source"], "source": r["source"], "content": r["text"], "contentVector": r["embedding"]}
-        for r in records
+        {
+            "id": document_id(r["source"], i),
+            "source": r["source"],
+            "content": r["text"],
+            "contentVector": r["embedding"],
+        }
+        for i, r in enumerate(records)
     ]
 
 
@@ -91,9 +96,7 @@ def build_search_args(mode, query, vector, top):
         return {"search_text": query, "top": top}
     if mode == "vector":
         return {"search_text": None, "vector_queries": [vector_query], "top": top}
-    # TODO(コマ14 演習手順6): hybrid の引数を返す。search_text に query を、vector_queries に [vector_query] を入れる。
-    #   いまは、ベクトル検索だけになっている。
-    return {"search_text": None, "vector_queries": [vector_query], "top": top}
+    return {"search_text": query, "vector_queries": [vector_query], "top": top}
 
 
 def run_search(client, mode, query, vector, top=3):

@@ -6,3 +6,4 @@ openai
 pydantic
 azure-storage-queue
 azure-search-documents
+azure-storage-blob

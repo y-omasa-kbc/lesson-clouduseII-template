@@ -20,6 +20,7 @@
   POST /api/jobs/classify  未対応の問い合わせをまとめて分類するジョブを始める（コマ10。すぐ 202 を返す）
   GET  /api/jobs?id=...    ジョブの状態を返す（コマ10）
   （キュー トリガー）classify_worker・classify_poison  ジョブのメッセージを1件ずつ処理する（コマ10）
+  （キュー トリガー）ingest_worker・ingest_poison  Blob のイベントを受けて、文書をインデックスに反映する（コマ15）
 
 接続先などの設定は、コードに書かずに「アプリ設定」（環境変数）から読む。
 
@@ -53,6 +54,7 @@ import classification
 import conversations
 import doc_search
 import embedding
+import ingest
 import jobs
 import llm
 import llm_cache
@@ -714,3 +716,62 @@ def classify_poison(msg: func.QueueMessage) -> None:
     body = msg.get_body().decode("utf-8")
     outcome = jobs.record_poison(body, get_job_store(), now_iso())
     logging.warning("classify_poison: 毒キューのメッセージを記録した（%s）", outcome)
+
+
+# =====================================================================
+# 文書の取り込みパイプライン（コマ15）
+#   Blob のコンテナー docs に文書を置く・差し替える・消す
+#   → Event Grid がイベントをキュー ingest-events に入れる（infra/resources.bicep の blobEvents）
+#   → ingest_worker が1件ずつ処理する
+# =====================================================================
+def get_ingest_parts():
+    """取り込みに使う部品。どれも、キーではなくマネージドIDで接続する"""
+    from azure.search.documents import SearchClient
+    from azure.storage.blob import BlobServiceClient
+
+    credential = DefaultAzureCredential()
+    blobs = BlobServiceClient(os.environ["AzureWebJobsStorage__blobServiceUri"], credential=credential)
+    search = SearchClient(os.environ["AZURE_SEARCH_ENDPOINT"], os.environ["AZURE_SEARCH_INDEX"], credential)
+    database = get_database()
+    return (
+        ingest.BlobDocuments(blobs.get_container_client(ingest.CONTAINER)),
+        ingest.SearchIndexStore(search),
+        ingest.CosmosEmbeddingCache(database.get_container_client(os.environ["COSMOS_EMBCACHE_CONTAINER"])),
+    )
+
+
+def record_ingest(result, attempt):
+    """取り込みの結果を、記録のコンテナー（ingestlog。7日で自動で消える）に残す"""
+    entry = {**result, "id": str(uuid.uuid4()), "attempt": attempt, "at": now_iso()}
+    entry.setdefault("source", "(不明)")
+    get_database().get_container_client(os.environ["COSMOS_INGESTLOG_CONTAINER"]).create_item(entry)
+
+
+@app.queue_trigger(arg_name="msg", queue_name=ingest.QUEUE_NAME, connection="AzureWebJobsStorage")
+def ingest_worker(msg: func.QueueMessage) -> None:
+    body = msg.get_body().decode("utf-8")
+    logging.info("ingest_worker: イベントを受け取った（%d 回目）", msg.dequeue_count)
+    blobs, index, cache = get_ingest_parts()
+    try:
+        result = ingest.process_event(
+            body, blobs, index, cache, embedding.embed_documents, embedding.document_model_name()
+        )
+    except ingest.IngestError as e:
+        # やり直しても直らない失敗: 例外を出さずに「失敗」と記録して終える（キューから消える）
+        parsed = ingest.parse_event(body)
+        source = ingest.source_of(parsed[1]) if parsed else "(不明)"
+        result = {"action": "failed", "source": source, "error": str(e)}
+    # それ以外の例外（埋め込み・インデックス・Cosmos DB の一時的な失敗）は、そのまま外に出す
+    #   → キューが少し時間をおいて、同じメッセージをもう一度渡す（host.json の maxDequeueCount 回まで）
+    logging.info("ingest_worker: %s", json.dumps(result, ensure_ascii=False))
+    if result["action"] != "ignored":
+        record_ingest(result, msg.dequeue_count)
+
+
+@app.queue_trigger(arg_name="msg", queue_name=ingest.POISON_QUEUE_NAME, connection="AzureWebJobsStorage")
+def ingest_poison(msg: func.QueueMessage) -> None:
+    body = msg.get_body().decode("utf-8")
+    parsed = ingest.parse_event(body)
+    source = ingest.source_of(parsed[1]) if parsed else "(不明)"
+    record_ingest({"action": "poison", "source": source, "error": "上限の回数まで失敗した（毒キュー）"}, msg.dequeue_count)
+    logging.warning("ingest_poison: %s を毒キューから記録した", source)
