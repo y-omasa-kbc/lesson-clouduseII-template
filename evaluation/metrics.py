@@ -1,4 +1,4 @@
-"""評価の指標（コマ17）
+"""評価の指標（コマ17。コマ18の開始状態では、コマ17の演習の解答を反映済み）
 
 1件の質問ごとに、次の3つを決める。
   find_rank    : 検索の評価。期待する根拠（正解のチャンク）が、検索の結果の何番目にあったか（LLM を使わない）
@@ -24,9 +24,11 @@ def find_rank(case, hits):
                     content に case["expected_text"]（目印の文字列）を含むチャンク
       答えられない質問（case["answerable"] が False）は、期待する根拠がないので、いつも None
     """
-    # TODO(コマ17 演習手順5-1): 上のとおりに、期待する根拠の順位を返す。
-    #   hits は [{"source": …, "content": …, "score": …}, …] で、上位から順に並んでいる。
-    #   いまは、いつも None を返している（どの質問も、検索で見つからなかったことになる）。
+    if not case["answerable"]:
+        return None
+    for i, h in enumerate(hits, 1):
+        if h["source"] == case["expected_source"] and case["expected_text"] in h["content"]:
+            return i
     return None
 
 
@@ -40,9 +42,12 @@ def check_answer(case, result):
                          出典（result["citations"]）に expected_source が入っていれば正しい
       答えられない質問 : 「分からない」と答えていれば（result["unknown"] が True なら）正しい
     """
-    # TODO(コマ17 演習手順5-2): 上のとおりに、正しければ True、正しくなければ False を返す。
-    #   いまは、いつも False を返している。
-    return False
+    if not case["answerable"]:
+        return result["unknown"]
+    if result["unknown"]:
+        return False
+    cited = {c["source"] for c in result["citations"]}
+    return all(w in result["answer"] for w in case["must_include"]) and case["expected_source"] in cited
 
 
 # =====================================================================
@@ -56,8 +61,10 @@ def diagnose(case, rank, ok):
       答えられる質問で、rank がある             → GENERATION_FAILURE（根拠は渡ったのに、正しく答えられなかった）
       答えられない質問で、ok が False           → GENERATION_FAILURE（資料にないことを答えた）
     """
-    # TODO(コマ17 演習手順5-3): 上の表のとおりに分ける。
-    #   いまは、いつも GENERATION_FAILURE を返している。
+    if ok:
+        return SUCCESS
+    if case["answerable"] and rank is None:
+        return RETRIEVAL_FAILURE
     return GENERATION_FAILURE
 
 

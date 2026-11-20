@@ -1,0 +1,9 @@
+{
+  "_comment": "表を含む PDF（架空の規程）に対する質問（コマ18）。table_value が true の質問は、表の1つのセルの値が答えになる。回答に、その値のほかに表のほかの値が入っていたら、答えが1つに定まっていないので誤りとする",
+  "questions": [
+    {"id": "t1", "question": "課長が政令指定都市に泊まるときの宿泊費の上限は", "must_include": ["10,400円"], "table_value": true},
+    {"id": "t2", "question": "一般社員が東京23区で泊まるときの宿泊費の上限は", "must_include": ["10,000円"], "table_value": true},
+    {"id": "t3", "question": "部長がその他の地域に泊まるときの宿泊費の上限は", "must_include": ["9,800円"], "table_value": true},
+    {"id": "t4", "question": "上限を超える宿に泊まりたいときはどうする", "must_include": ["承認"], "table_value": false}
+  ]
+}

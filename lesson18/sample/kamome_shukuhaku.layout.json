@@ -1,0 +1,576 @@
+{
+ "_note": "教員が作った見本である（実際の Document Intelligence の解析結果ではない）。prebuilt-layout・Markdown 出力（API 2024-11-30）の analyzeResult の形に合わせ、演習で使う項目だけを入れた。実物では、座標（polygon）・信頼度・単語・行などの項目も付き、細部が異なる場合がある",
+ "apiVersion": "2024-11-30",
+ "modelId": "prebuilt-layout",
+ "stringIndexType": "textElements",
+ "contentFormat": "markdown",
+ "content": "<!-- PageHeader=\"カモメ物産株式会社（架空の会社） 総務課\" -->\n<!-- PageHeader=\"規程番号 SM-204\" -->\n\n# 国内出張の宿泊費に関する規程\n\n2027年4月1日 施行\n\n## 第1条（目的）\n\nこの規程は、社員が国内に出張するときの宿泊費の上限を定める。日当と交通費は、経費・出張の規程による。\n\n## 第2条（宿泊費の上限）\n\n1泊あたりの宿泊費の上限（税込）は、役職と宿泊する地域に応じて、次の表のとおりとする。\n\n<table>\n<tr>\n<th>役職</th>\n<th>東京23区・大阪市</th>\n<th>政令指定都市</th>\n<th>その他の地域</th>\n</tr>\n<tr>\n<td>一般社員</td>\n<td>10,000円</td>\n<td>8,800円</td>\n<td>7,600円</td>\n</tr>\n<tr>\n<td>主任</td>\n<td>10,800円</td>\n<td>9,200円</td>\n<td>8,000円</td>\n</tr>\n<tr>\n<td>課長</td>\n<td>12,500円</td>\n<td>10,400円</td>\n<td>9,000円</td>\n</tr>\n<tr>\n<td>部長</td>\n<td>14,000円</td>\n<td>11,600円</td>\n<td>9,800円</td>\n</tr>\n</table>\n\n※ 政令指定都市のうち、大阪市は「東京23区・大阪市」の欄による。\n\n## 第3条（上限を超える場合）\n\n上限を超える宿に泊まる必要があるときは、出発の3営業日前までに、理由を書いて総務課の承認を得る。承認がない場合、上限を超えた分は本人の負担とする。\n\n## 第4条（領収書）\n\n宿泊費を精算するときは、宿泊先の領収書を経費システムに添付する。\n\n<!-- PageFooter=\"1 / 1\" -->\n",
+ "pages": [
+  {
+   "pageNumber": 1,
+   "width": 8.2639,
+   "height": 11.6944,
+   "unit": "inch",
+   "spans": [
+    {
+     "offset": 0,
+     "length": 822
+    }
+   ]
+  }
+ ],
+ "paragraphs": [
+  {
+   "role": "pageHeader",
+   "content": "カモメ物産株式会社（架空の会社） 総務課",
+   "spans": [
+    {
+     "offset": 17,
+     "length": 20
+    }
+   ]
+  },
+  {
+   "role": "pageHeader",
+   "content": "規程番号 SM-204",
+   "spans": [
+    {
+     "offset": 60,
+     "length": 11
+    }
+   ]
+  },
+  {
+   "role": "title",
+   "content": "国内出張の宿泊費に関する規程",
+   "spans": [
+    {
+     "offset": 80,
+     "length": 14
+    }
+   ]
+  },
+  {
+   "content": "2027年4月1日 施行",
+   "spans": [
+    {
+     "offset": 96,
+     "length": 12
+    }
+   ]
+  },
+  {
+   "role": "sectionHeading",
+   "content": "第1条（目的）",
+   "spans": [
+    {
+     "offset": 113,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "この規程は、社員が国内に出張するときの宿泊費の上限を定める。日当と交通費は、経費・出張の規程による。",
+   "spans": [
+    {
+     "offset": 122,
+     "length": 50
+    }
+   ]
+  },
+  {
+   "role": "sectionHeading",
+   "content": "第2条（宿泊費の上限）",
+   "spans": [
+    {
+     "offset": 177,
+     "length": 11
+    }
+   ]
+  },
+  {
+   "content": "1泊あたりの宿泊費の上限（税込）は、役職と宿泊する地域に応じて、次の表のとおりとする。",
+   "spans": [
+    {
+     "offset": 190,
+     "length": 43
+    }
+   ]
+  },
+  {
+   "content": "役職",
+   "spans": [
+    {
+     "offset": 252,
+     "length": 2
+    }
+   ]
+  },
+  {
+   "content": "東京23区・大阪市",
+   "spans": [
+    {
+     "offset": 264,
+     "length": 9
+    }
+   ]
+  },
+  {
+   "content": "政令指定都市",
+   "spans": [
+    {
+     "offset": 283,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "その他の地域",
+   "spans": [
+    {
+     "offset": 299,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "一般社員",
+   "spans": [
+    {
+     "offset": 326,
+     "length": 4
+    }
+   ]
+  },
+  {
+   "content": "10,000円",
+   "spans": [
+    {
+     "offset": 340,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "8,800円",
+   "spans": [
+    {
+     "offset": 357,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "7,600円",
+   "spans": [
+    {
+     "offset": 373,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "主任",
+   "spans": [
+    {
+     "offset": 400,
+     "length": 2
+    }
+   ]
+  },
+  {
+   "content": "10,800円",
+   "spans": [
+    {
+     "offset": 412,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "9,200円",
+   "spans": [
+    {
+     "offset": 429,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "8,000円",
+   "spans": [
+    {
+     "offset": 445,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "課長",
+   "spans": [
+    {
+     "offset": 472,
+     "length": 2
+    }
+   ]
+  },
+  {
+   "content": "12,500円",
+   "spans": [
+    {
+     "offset": 484,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "10,400円",
+   "spans": [
+    {
+     "offset": 501,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "9,000円",
+   "spans": [
+    {
+     "offset": 518,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "部長",
+   "spans": [
+    {
+     "offset": 545,
+     "length": 2
+    }
+   ]
+  },
+  {
+   "content": "14,000円",
+   "spans": [
+    {
+     "offset": 557,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "11,600円",
+   "spans": [
+    {
+     "offset": 574,
+     "length": 7
+    }
+   ]
+  },
+  {
+   "content": "9,800円",
+   "spans": [
+    {
+     "offset": 591,
+     "length": 6
+    }
+   ]
+  },
+  {
+   "content": "※ 政令指定都市のうち、大阪市は「東京23区・大阪市」の欄による。",
+   "spans": [
+    {
+     "offset": 619,
+     "length": 33
+    }
+   ]
+  },
+  {
+   "role": "sectionHeading",
+   "content": "第3条（上限を超える場合）",
+   "spans": [
+    {
+     "offset": 657,
+     "length": 13
+    }
+   ]
+  },
+  {
+   "content": "上限を超える宿に泊まる必要があるときは、出発の3営業日前までに、理由を書いて総務課の承認を得る。承認がない場合、上限を超えた分は本人の負担とする。",
+   "spans": [
+    {
+     "offset": 672,
+     "length": 73
+    }
+   ]
+  },
+  {
+   "role": "sectionHeading",
+   "content": "第4条（領収書）",
+   "spans": [
+    {
+     "offset": 750,
+     "length": 8
+    }
+   ]
+  },
+  {
+   "content": "宿泊費を精算するときは、宿泊先の領収書を経費システムに添付する。",
+   "spans": [
+    {
+     "offset": 760,
+     "length": 32
+    }
+   ]
+  },
+  {
+   "role": "pageFooter",
+   "content": "1 / 1",
+   "spans": [
+    {
+     "offset": 811,
+     "length": 5
+    }
+   ]
+  }
+ ],
+ "tables": [
+  {
+   "rowCount": 5,
+   "columnCount": 4,
+   "cells": [
+    {
+     "kind": "columnHeader",
+     "rowIndex": 0,
+     "columnIndex": 0,
+     "content": "役職",
+     "spans": [
+      {
+       "offset": 252,
+       "length": 2
+      }
+     ]
+    },
+    {
+     "kind": "columnHeader",
+     "rowIndex": 0,
+     "columnIndex": 1,
+     "content": "東京23区・大阪市",
+     "spans": [
+      {
+       "offset": 264,
+       "length": 9
+      }
+     ]
+    },
+    {
+     "kind": "columnHeader",
+     "rowIndex": 0,
+     "columnIndex": 2,
+     "content": "政令指定都市",
+     "spans": [
+      {
+       "offset": 283,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "kind": "columnHeader",
+     "rowIndex": 0,
+     "columnIndex": 3,
+     "content": "その他の地域",
+     "spans": [
+      {
+       "offset": 299,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 1,
+     "columnIndex": 0,
+     "content": "一般社員",
+     "spans": [
+      {
+       "offset": 326,
+       "length": 4
+      }
+     ]
+    },
+    {
+     "rowIndex": 1,
+     "columnIndex": 1,
+     "content": "10,000円",
+     "spans": [
+      {
+       "offset": 340,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 1,
+     "columnIndex": 2,
+     "content": "8,800円",
+     "spans": [
+      {
+       "offset": 357,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 1,
+     "columnIndex": 3,
+     "content": "7,600円",
+     "spans": [
+      {
+       "offset": 373,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 2,
+     "columnIndex": 0,
+     "content": "主任",
+     "spans": [
+      {
+       "offset": 400,
+       "length": 2
+      }
+     ]
+    },
+    {
+     "rowIndex": 2,
+     "columnIndex": 1,
+     "content": "10,800円",
+     "spans": [
+      {
+       "offset": 412,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 2,
+     "columnIndex": 2,
+     "content": "9,200円",
+     "spans": [
+      {
+       "offset": 429,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 2,
+     "columnIndex": 3,
+     "content": "8,000円",
+     "spans": [
+      {
+       "offset": 445,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 3,
+     "columnIndex": 0,
+     "content": "課長",
+     "spans": [
+      {
+       "offset": 472,
+       "length": 2
+      }
+     ]
+    },
+    {
+     "rowIndex": 3,
+     "columnIndex": 1,
+     "content": "12,500円",
+     "spans": [
+      {
+       "offset": 484,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 3,
+     "columnIndex": 2,
+     "content": "10,400円",
+     "spans": [
+      {
+       "offset": 501,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 3,
+     "columnIndex": 3,
+     "content": "9,000円",
+     "spans": [
+      {
+       "offset": 518,
+       "length": 6
+      }
+     ]
+    },
+    {
+     "rowIndex": 4,
+     "columnIndex": 0,
+     "content": "部長",
+     "spans": [
+      {
+       "offset": 545,
+       "length": 2
+      }
+     ]
+    },
+    {
+     "rowIndex": 4,
+     "columnIndex": 1,
+     "content": "14,000円",
+     "spans": [
+      {
+       "offset": 557,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 4,
+     "columnIndex": 2,
+     "content": "11,600円",
+     "spans": [
+      {
+       "offset": 574,
+       "length": 7
+      }
+     ]
+    },
+    {
+     "rowIndex": 4,
+     "columnIndex": 3,
+     "content": "9,800円",
+     "spans": [
+      {
+       "offset": 591,
+       "length": 6
+      }
+     ]
+    }
+   ],
+   "spans": [
+    {
+     "offset": 235,
+     "length": 382
+    }
+   ]
+  }
+ ]
+}
