@@ -1,0 +1,105 @@
+{
+  "_comment": "社内FAQボットの評価セット（コマ17。架空）。1件 = 質問・質問する利用者・期待する根拠（正解の文書と、その中の目印の文字列）・回答に含まれるべき語。answerable が false の質問は、「分からない」と答えるのが正解",
+  "cases": [
+    {
+      "id": "q01",
+      "question": "経費精算の締め切りは",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/keihi_shucchou.txt",
+      "expected_text": "毎月25日",
+      "must_include": ["25日"],
+      "kind": "基本"
+    },
+    {
+      "id": "q02",
+      "question": "有給休暇はいつまでに申請すればいい",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/faq_general.txt",
+      "expected_text": "3営業日前",
+      "must_include": ["3営業日前"],
+      "kind": "基本"
+    },
+    {
+      "id": "q03",
+      "question": "E-7310 の対処",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/faq_it.txt",
+      "expected_text": "E-7310",
+      "must_include": ["用紙の詰まり"],
+      "kind": "型番"
+    },
+    {
+      "id": "q04",
+      "question": "809 のエラー",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/faq_it.txt",
+      "expected_text": "エラー 809",
+      "must_include": ["ルーター"],
+      "kind": "型番"
+    },
+    {
+      "id": "q05",
+      "question": "体調が悪くて会社に行けない",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/faq_general.txt",
+      "expected_text": "体調不良",
+      "must_include": ["電話"],
+      "kind": "言い換え"
+    },
+    {
+      "id": "q06",
+      "question": "パソコンを落としてなくした",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/faq_it.txt",
+      "expected_text": "紛失",
+      "must_include": ["遠隔"],
+      "kind": "言い換え"
+    },
+    {
+      "id": "q07",
+      "question": "泊まりの出張の日当はいくら",
+      "user": "user-aoi",
+      "answerable": true,
+      "expected_source": "docs/keihi_shucchou.txt",
+      "expected_text": "日当",
+      "must_include": ["2,000円"],
+      "kind": "言い換え"
+    },
+    {
+      "id": "q08",
+      "question": "VPN 装置の保守の契約番号は",
+      "user": "staff-sora",
+      "answerable": true,
+      "expected_source": "docs/it_kanri.txt",
+      "expected_text": "M-5521",
+      "must_include": ["M-5521"],
+      "kind": "権限あり"
+    },
+    {
+      "id": "q09",
+      "question": "昇給の基準を教えて",
+      "user": "user-aoi",
+      "answerable": false,
+      "expected_source": null,
+      "expected_text": null,
+      "must_include": [],
+      "kind": "権限なし"
+    },
+    {
+      "id": "q10",
+      "question": "社員食堂の今週のメニューは",
+      "user": "user-aoi",
+      "answerable": false,
+      "expected_source": null,
+      "expected_text": null,
+      "must_include": [],
+      "kind": "資料にない"
+    }
+  ]
+}

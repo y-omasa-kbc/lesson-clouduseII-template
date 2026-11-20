@@ -1,0 +1,7 @@
+{
+  "_comment": "品質の基準（コマ17）。test_quality.py が、評価の結果がこれを下回っていないかを確かめる。最初は、ローカルの RAG と同じ構成で測った値にしてある。改善を採用したら、新しい値まで上げる",
+  "max_leaks": 0,
+  "min_unknown_accuracy": 1.0,
+  "min_hit_rate": 0.75,
+  "min_answer_accuracy": 0.6
+}

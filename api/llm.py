@@ -1,6 +1,7 @@
 """言語モデル（LLM）を呼ぶ部分（コマ7〜9・12・16。教員が用意したもの）
 
 コマ16で、応答をまとめて返す complete_text（RAG の回答に使う）を追加した。
+コマ17で、モックLLMに、LLM による自動評価（審査員）の応答を追加した。
 
 コマ9で「プロバイダ」の形に整理した。
   プロバイダ = LLM の呼び先。同じ形の関数（complete_json・stream_chat・complete_tools）を持つ。
@@ -161,6 +162,8 @@ class MockProvider:
     RAG の回答の失敗（コマ16）
       bad_citation    : 存在しない資料の番号（[9]）を引用する
       no_citation     : 引用を付けずに、資料にない内容をもっともらしく答える
+    LLM による自動評価の失敗（コマ17）
+      judge_format    : 審査員が、決めた JSON の形で答えない（点数を文で答える）
     """
 
     def __init__(self):
@@ -201,6 +204,8 @@ class MockProvider:
         重なりが少なければ、「資料からは分かりません」と返す。意味を理解しているわけではない。
         """
         self._maybe_fail(model, messages)
+        if messages[-1]["content"].startswith(JUDGE_MARK):
+            return self._judge(messages[-1]["content"])
         question, sources = _parse_rag_prompt(messages[-1]["content"])
         if self.fault == "no_citation":
             return "（モックLLMの応答）その件は、毎年4月に全社員へ一律で案内されることになっている。"
@@ -216,6 +221,29 @@ class MockProvider:
         answer = (answer_lines[0][2:] if answer_lines else sources[best_n]).strip()
         cite = 9 if self.fault == "bad_citation" else best_n
         return f"（モックLLMの応答）{answer} [{cite}]"
+
+    def _judge(self, content):
+        """LLM による自動評価（審査員）のモック（コマ17）。言葉の重なりで点数を付ける。意味は理解していない
+
+          根拠性: 回答の言葉（2文字ずつの並び）のうち、資料にも含まれるものの割合
+          関連性: 質問の言葉のうち、回答と、回答のもとになった資料（Q. の行を含む）にも含まれるものの割合
+                  （言葉が重なれば関連があるとみなす。言い換えには弱く、期待する答えも知らない）
+        """
+        criterion = _section(content, "観点")
+        question, sources, answer = _section(content, "質問"), _section(content, "資料"), _section(content, "回答")
+        if self.fault == "judge_format":
+            return "（モックの審査員）5点です。資料に沿ってよく書けていると思います。"
+        answer_grams = _bigrams(re.sub(r"（モックLLMの応答）|\[\d+\]", "", answer))
+        if criterion == "根拠性":
+            base = _bigrams(sources)
+            ratio = len(answer_grams & base) / len(answer_grams) if answer_grams else 0.0
+        else:
+            blocks = [_bigrams(b) for b in re.split(r"^\[\d+\] ", sources, flags=re.M) if b.strip()]
+            origin = max(blocks, key=lambda b: len(b & answer_grams), default=set())
+            grams = _bigrams(question)
+            ratio = len(grams & (answer_grams | origin)) / len(grams) if grams else 0.0
+        score = 1 + round(4 * ratio)
+        return json.dumps({"score": score, "reason": f"（モックの審査員）言葉の重なりは {ratio:.0%} だった。"}, ensure_ascii=False)
 
     def complete_json(self, model, messages, schema, mode, max_tokens):
         """分類用のモック。決まった規則で分類し、JSON の文字列を返す"""
@@ -301,6 +329,7 @@ class MockProvider:
 
 
 _MOCK_RAG_THRESHOLD = 0.4
+JUDGE_MARK = "【評価の対象】"  # LLM による自動評価のプロンプト（evaluation/judge.py）の先頭の印
 _RAG_SOURCE = re.compile(r"^\[(\d+)\] 出典: .*$", re.MULTILINE)
 _JAPANESE_RUN = re.compile(r"[ぁ-んァ-ヶ一-龠ーA-Za-z0-9]+")
 _STOP_BIGRAMS = {"とき", "きは", "する", "には", "のは", "たい", "ですか", "教え", "えて", "いか", "るか", "って"}
@@ -311,6 +340,12 @@ def _bigrams(text):
     for run in _JAPANESE_RUN.findall(text):
         grams.update(run[i : i + 2] for i in range(len(run) - 1))
     return grams - _STOP_BIGRAMS
+
+
+def _section(content, name):
+    """【名前】の後ろから、次の【…】の前までを取り出す（自動評価のプロンプト用）"""
+    m = re.search(rf"【{name}】\n(.*?)(?=\n【|\Z)", content, re.S)
+    return m.group(1).strip() if m else ""
 
 
 def _parse_rag_prompt(content):

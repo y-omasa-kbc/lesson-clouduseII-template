@@ -1,4 +1,4 @@
-"""アクセス制御付きの RAG と引用（コマ16）
+"""アクセス制御付きの RAG と引用（コマ16。コマ17の開始状態では、コマ16の演習の解答を反映済み）
 
 流れ（POST /api/ask）
   1. 利用者のグループを、サーバー側で決める                  groups_for
@@ -46,21 +46,23 @@ def security_filter(groups):
     例: ["all", "hr"] → allowedGroups/any(g: search.in(g, 'all,hr', ','))
         「allowedGroups のどれかが、all か hr のどちらかと一致する文書」だけが検索の対象になる
     """
-    # TODO(コマ16 演習手順5-1): 上の例の形の式を返す。
-    #   ・groups が空なら ValueError を出す（空の式では絞り込めない。絞り込まずに検索すると、全部が見えてしまう）
-    #   ・GROUP_NAME.fullmatch に合わない名前があれば ValueError を出す
-    #     （' や , を含む名前をそのまま式に入れると、式を書き換えられてしまう）
-    #   いまは None を返している（絞り込まない）。
-    return None
+    if not groups:
+        raise ValueError("グループがない")  # 空の式では絞り込めない。絞り込まずに検索すると、全部が見えてしまう
+    for g in groups:
+        if not GROUP_NAME.fullmatch(g):
+            raise ValueError(f"グループの名前が正しくない: {g!r}")  # ' や , を含む名前は、式を書き換えられる
+    return f"allowedGroups/any(g: search.in(g, '{','.join(groups)}', ','))"
 
 
-def retrieve(client, query, vector, groups, top=3):
-    """利用者が見てよい文書だけを、ハイブリッド検索で探す"""
+def retrieve(client, query, vector, groups, top=3, mode="hybrid"):
+    """利用者が見てよい文書だけを検索する（既定はハイブリッド検索）
+
+    top・mode は、コマ17で引数にした（評価で、件数と検索の方式を変えて比べるため。アプリの値は llm_config.json の
+    rag_top_k・rag_search_mode）。
+    """
     if not groups:
         return []  # どのグループにも属さない利用者には、何も見せない（検索もしない）
-    # TODO(コマ16 演習手順5-2): 検索に、絞り込みの式 security_filter(groups) を渡す（run_search の filter）。
-    #   いまは絞り込まずに検索している。見てはいけない文書も、検索の候補になってしまう。
-    return doc_search.run_search(client, "hybrid", query, vector, top)
+    return doc_search.run_search(client, mode, query, vector, top, filter=security_filter(groups))
 
 
 # =====================================================================
@@ -85,10 +87,12 @@ def extract_citations(answer, hits):
 
     hits に存在しない番号（[0] や、資料の数より大きい番号）は、出典にしない。同じ番号は1回だけにする。
     """
-    # TODO(コマ16 演習手順6-1): 上のとおりに、回答が実際に引用した資料だけを返す。
-    #   回答から [数字] を探すには re.findall(r"\[(\d+)\]", answer) を使う。
-    #   いまは、回答に関係なく、検索の結果を全部「出典」にしている。
-    return [{"n": i, "source": h["source"], "title": title_of(h["content"])} for i, h in enumerate(hits, 1)]
+    numbers = sorted({int(n) for n in re.findall(r"\[(\d+)\]", answer)})
+    return [
+        {"n": n, "source": hits[n - 1]["source"], "title": title_of(hits[n - 1]["content"])}
+        for n in numbers
+        if 1 <= n <= len(hits)
+    ]
 
 
 def answer_question(question, hits, complete, system_prompt=""):
@@ -96,11 +100,11 @@ def answer_question(question, hits, complete, system_prompt=""):
 
     戻り値: {"answer": 回答, "citations": 出典の一覧, "unknown": 分からないと答えたか, "llmCalls": LLM を呼んだ回数}
     """
-    # TODO(コマ16 演習手順6-2): 「分からない」と答える場面を2つ加える。
-    #   ・hits が空なら、LLM を呼ばずに UNKNOWN を返す（llmCalls は 0）
-    #   ・回答に正しい引用が1つもなければ（extract_citations が空なら）、回答を UNKNOWN に置き換える
-    #     （根拠を示せない回答は、資料にないことを作った可能性がある）
-    #   いまは、どちらの場面でも、LLM の回答をそのまま返している。
+    if not hits:
+        return {"answer": UNKNOWN, "citations": [], "unknown": True, "llmCalls": 0}  # LLM を呼ばない
     answer = complete(build_messages(question, hits, system_prompt))
     citations = extract_citations(answer, hits)
+    if not citations:
+        # 正しい引用が1つもない回答は、資料にないことを作った可能性がある
+        return {"answer": UNKNOWN, "citations": [], "unknown": True, "llmCalls": 1}
     return {"answer": answer, "citations": citations, "unknown": False, "llmCalls": 1}

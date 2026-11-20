@@ -1,0 +1,18 @@
+{
+  "_comment": "文書ごとの権限（コマ17の評価用。架空。コマ16の配布データと同じ）。allowedGroups のどれかに属する利用者だけが見てよい",
+  "docs/faq_general.txt": [
+    "all"
+  ],
+  "docs/faq_it.txt": [
+    "all"
+  ],
+  "docs/keihi_shucchou.txt": [
+    "all"
+  ],
+  "docs/jinji_kyuyo.txt": [
+    "hr"
+  ],
+  "docs/it_kanri.txt": [
+    "it"
+  ]
+}

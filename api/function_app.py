@@ -801,7 +801,9 @@ async def ask(req: Request) -> JSONResponse:
     config = llm.load_config()
     try:
         vector = await asyncio.to_thread(embedding.embed_query, question)
-        hits = await asyncio.to_thread(rag.retrieve, get_search_client(), question, vector, groups)
+        hits = await asyncio.to_thread(
+            rag.retrieve, get_search_client(), question, vector, groups, config["rag_top_k"], config["rag_search_mode"]
+        )
         result = await asyncio.to_thread(
             rag.answer_question,
             question,

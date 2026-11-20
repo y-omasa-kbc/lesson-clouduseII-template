@@ -1,0 +1,6 @@
+{
+  "_comment": "評価する RAG の設定（コマ17）。最初は、ローカルの RAG と同じ構成（ベクトル検索だけ・上位3件・Q と A の組ごとのチャンク）にしてある。手法を1つ選び、1か所だけ変えて測り直す。search_mode: vector | keyword | hybrid、top_k: 検索の結果の件数、chunking: qa（Q と A の組ごと）| fixed（80文字ごとに機械的に切る）| file（文書をまるごと）",
+  "search_mode": "vector",
+  "top_k": 3,
+  "chunking": "qa"
+}
